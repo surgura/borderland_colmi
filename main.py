@@ -34,7 +34,10 @@ async def cmd_run_impl(addresses: list[str]) -> None:
 
     client = Client(address=addresses[0])
     async with client:
-        await client.enable_raw_sensor_data()
+        # await client.blink_twice()
+        # await client.reboot()
+        # await client.enable_raw_sensor_data()
+        await client.disable_raw_sensor_data()
         while True:
             # data = client.get_full_data()
             # data = await client.get_heart_rate_log()
@@ -42,7 +45,7 @@ async def cmd_run_impl(addresses: list[str]) -> None:
             # return
             # logger.info("Waiting")
             print("waiting")
-            await asyncio.sleep(1)
+            await asyncio.sleep(5)
     raise NotImplementedError()
 
 def cmd_scan_and_run() -> None:
