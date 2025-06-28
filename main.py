@@ -1,8 +1,11 @@
-from colmi_r02_client.client import Client
 from bleak import BleakScanner, BLEDevice
 import asyncio
 from colmi_r02_client.cli import DEVICE_NAME_PREFIXES
 import argparse
+from client import Client
+import logging
+
+# logger = logging.getLogger(__name__)
 
 def find_devices() -> list[BLEDevice]:
     all_devices = asyncio.run(BleakScanner.discover(timeout=10))
@@ -31,11 +34,15 @@ async def cmd_run_impl(addresses: list[str]) -> None:
 
     client = Client(address=addresses[0])
     async with client:
+        await client.enable_raw_sensor_data()
         while True:
             # data = client.get_full_data()
-            data = await client.get_heart_rate_log()
-            print(data.heart_rates[0])
-            return
+            # data = await client.get_heart_rate_log()
+            # print(data.heart_rates[0])
+            # return
+            # logger.info("Waiting")
+            print("waiting")
+            await asyncio.sleep(1)
     raise NotImplementedError()
 
 def cmd_scan_and_run() -> None:
