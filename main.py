@@ -22,13 +22,26 @@ def cmd_scan() -> None:
             print(f"{ring.name:>20}  |  {ring.address}")
 
 def cmd_run(addresses: list[str]) -> None:
+    asyncio.run(cmd_run_impl(addresses))    
+
+async def cmd_run_impl(addresses: list[str]) -> None:
+    if len(addresses) == 0:
+        raise ValueError("Must have at least one address to connect to.")
     print(f"Running with addresses:\n{'\n'.join(addresses)}")
+
+    client = Client(address=addresses[0])
+    async with client:
+        while True:
+            # data = client.get_full_data()
+            data = await client.get_heart_rate_log()
+            print(data.heart_rates[0])
+            return
     raise NotImplementedError()
 
 def cmd_scan_and_run() -> None:
     print("Scanning..")
     ring_devices = find_devices()
-    if len(ring_devices) == 0:
+    if len(ring_devices) == 0:  
         print("No rings found. Exiting..")
         return
     cmd_run([ring.address for ring in ring_devices])
