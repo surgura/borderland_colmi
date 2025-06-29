@@ -86,13 +86,15 @@ class Client:
         await self._send_command(_DISABLE_RAW_SENSOR_CMD)
 
     async def _handle_tx(self, sender: int, data: bytearray) -> None:
-        # Update parsed_data based on the sensor type
         if data[0] == 0xA1:
-            subtype = data[1]
-            if subtype == 0x03:
+            if data[1] == 0x03:
+                # y = axis through charging point
+                # z = axis through ring
+
                 acc_x = (data[6] << 4) | (data[7] & 0xF)
                 if acc_x & (1 << 11):
                     acc_x -= 1 << 12
+
                 acc_y = (data[2] << 4) | (data[3] & 0xF)
                 if acc_y & (1 << 11):
                     acc_y -= 1 << 12
@@ -100,6 +102,7 @@ class Client:
                 acc_z = (data[4] << 4) | (data[5] & 0xF)
                 if acc_z & (1 << 11):
                     acc_z -= 1 << 12
+
                 await self._on_raw_sensor_data(acc_x, acc_y, acc_z)
 
     async def _send_command(self, command):
