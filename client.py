@@ -6,13 +6,15 @@ from typing import Callable, Awaitable
 
 logger = logging.getLogger(__name__)
 
+
 def _create_command(hex_string):
-    bytes_array = [int(hex_string[i:i+2], 16) for i in range(0, len(hex_string), 2)]
+    bytes_array = [int(hex_string[i : i + 2], 16) for i in range(0, len(hex_string), 2)]
     while len(bytes_array) < 15:
         bytes_array.append(0)
     checksum = sum(bytes_array) & 0xFF
     bytes_array.append(checksum)
     return bytes(bytes_array)
+
 
 _REBOOT_CMD = _create_command("0801")
 _BLINK_TWICE_CMD = _create_command("10")
@@ -22,13 +24,18 @@ _DISABLE_RAW_SENSOR_CMD = _create_command("a102")
 _UART_TX_CHAR_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
 _UART_RX_CHAR_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"
 
+
 class Client:
     address: str
     bleak_client: BleakClient
 
     _on_raw_sensor_data: Callable[[int, int, int], Awaitable[None]]
 
-    def __init__(self, address: str, on_raw_sensor_data: Callable[[int, int, int], Awaitable[None]]) -> None:
+    def __init__(
+        self,
+        address: str,
+        on_raw_sensor_data: Callable[[int, int, int], Awaitable[None]],
+    ) -> None:
         self.address = address
         self.bleak_client = BleakClient(self.address)
 
@@ -48,7 +55,9 @@ class Client:
     ) -> None:
         logger.info("Disconnecting")
         if exc_val is not None:
-            logger.error("Error in client. Disconnecting.. error will be shown afterwards.")
+            logger.error(
+                "Error in client. Disconnecting.. error will be shown afterwards."
+            )
         await self.disconnect()
 
     async def connect(self) -> None:
@@ -81,10 +90,17 @@ class Client:
         if data[0] == 0xA1:
             subtype = data[1]
             if subtype == 0x03:
-                acc_x = ((data[6] << 4) | (data[7] & 0xF)) - (1 << 11) if data[6] & 0x8 else ((data[6] << 4) | (data[7] & 0xF))
-                acc_y = ((data[2] << 4) | (data[3] & 0xF)) - (1 << 11) if data[2] & 0x8 else ((data[2] << 4) | (data[3] & 0xF))
-                acc_z = ((data[4] << 4) | (data[5] & 0xF)) - (1 << 11) if data[4] & 0x8 else ((data[4] << 4) | (data[5] & 0xF))
-                await self._on_raw_sensor_data(acc_x, acc_y,acc_z)
+                acc_x = (data[6] << 4) | (data[7] & 0xF)
+                if acc_x & (1 << 11):
+                    acc_x -= 1 << 12
+                acc_y = (data[2] << 4) | (data[3] & 0xF)
+                if acc_y & (1 << 11):
+                    acc_y -= 1 << 12
+
+                acc_z = (data[4] << 4) | (data[5] & 0xF)
+                if acc_z & (1 << 11):
+                    acc_z -= 1 << 12
+                await self._on_raw_sensor_data(acc_x, acc_y, acc_z)
 
     async def _send_command(self, command):
         await self.bleak_client.write_gatt_char(_UART_RX_CHAR_UUID, command)

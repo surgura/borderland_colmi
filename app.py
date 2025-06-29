@@ -39,7 +39,6 @@ def run_app(addresses: list[str]) -> None:
 
     ui.dark_mode(None)
 
-    ui.label("Async Client + Plotly Live Plot")
     ui.button("Enable accelerometer", on_click=on_enable_accelerometer)
     ui.button("Disable accelerometer", on_click=on_disable_accelerometer)
 
