@@ -4,6 +4,7 @@ from colmi_r02_client.cli import DEVICE_NAME_PREFIXES
 import argparse
 from client import Client
 import logging
+from app import run_app
 
 # logger = logging.getLogger(__name__)
 
@@ -25,7 +26,8 @@ def cmd_scan() -> None:
             print(f"{ring.name:>20}  |  {ring.address}")
 
 def cmd_run(addresses: list[str]) -> None:
-    asyncio.run(cmd_run_impl(addresses))    
+    # asyncio.run(cmd_run_impl(addresses))    
+    run_app(addresses)
 
 async def cmd_run_impl(addresses: list[str]) -> None:
     if len(addresses) == 0:
@@ -77,5 +79,5 @@ def main() -> None:
         cmd_scan_and_run()
 
 
-if __name__ == "__main__":
+if __name__ == "__main__" or __name__ == "__mp_main__":
     main()

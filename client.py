@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from bleak import BleakClient
 import logging
+from typing import Callable, Awaitable
 
 logger = logging.getLogger(__name__)
 
@@ -25,9 +26,13 @@ class Client:
     address: str
     bleak_client: BleakClient
 
-    def __init__(self, address: str) -> None:
+    _on_raw_sensor_data: Callable[[int, int, int], Awaitable[None]]
+
+    def __init__(self, address: str, on_raw_sensor_data: Callable[[int, int, int], Awaitable[None]]) -> None:
         self.address = address
         self.bleak_client = BleakClient(self.address)
+
+        self._on_raw_sensor_data = on_raw_sensor_data
 
     async def __aenter__(self) -> Client:
         logger.info(f"Connecting to {self.address}")
@@ -72,44 +77,14 @@ class Client:
         await self._send_command(_DISABLE_RAW_SENSOR_CMD)
 
     async def _handle_tx(self, sender: int, data: bytearray) -> None:
-        # logger.info("Got tx")
-        # print("got tx")
-        # print(data)
-        parsed_data = {
-            "payload": "", "accX": "", "accY": "", "accZ": "",
-            "ppg": "", "ppg_max": "", "ppg_min": "", "ppg_diff": "",
-            "spO2": "", "spO2_max": "", "spO2_min": "", "spO2_diff": ""
-        }
-        
-        # Store the payload as a hex string
-        parsed_data["payload"] = data.hex()
-
         # Update parsed_data based on the sensor type
         if data[0] == 0xA1:
             subtype = data[1]
-            if subtype == 0x01:
-                parsed_data["spO2"] = (data[2] << 8) | data[3]
-                parsed_data["spO2_max"] = data[5]
-                parsed_data["spO2_min"] = data[7]
-                parsed_data["spO2_diff"] = data[9]
-            elif subtype == 0x02:
-                parsed_data["ppg"] = (data[2] << 8) | data[3]
-                parsed_data["ppg_max"] = (data[4] << 8) | data[5]
-                parsed_data["ppg_min"] = (data[6] << 8) | data[7]
-                parsed_data["ppg_diff"] = (data[8] << 8) | data[9]
-            elif subtype == 0x03:
-                parsed_data["accX"] = ((data[6] << 4) | (data[7] & 0xF)) - (1 << 11) if data[6] & 0x8 else ((data[6] << 4) | (data[7] & 0xF))
-                parsed_data["accY"] = ((data[2] << 4) | (data[3] & 0xF)) - (1 << 11) if data[2] & 0x8 else ((data[2] << 4) | (data[3] & 0xF))
-                parsed_data["accZ"] = ((data[4] << 4) | (data[5] & 0xF)) - (1 << 11) if data[4] & 0x8 else ((data[4] << 4) | (data[5] & 0xF))
-            
-            # Check if ppg and spO2 are equal to zero; skip writing if true
-            if parsed_data["ppg"] == 0 or parsed_data["spO2"] == 0:
-                print("Skipping data with zero ppg and spO2 values")
-                return
-
-            # timestamp = datetime.now().isoformat()
-            # csv_writer.writerow([timestamp] + [parsed_data.get(col, "") for col in parsed_data])
-            print("Written to CSV:", [parsed_data.get(col, "") for col in parsed_data])  # Confirm write
+            if subtype == 0x03:
+                acc_x = ((data[6] << 4) | (data[7] & 0xF)) - (1 << 11) if data[6] & 0x8 else ((data[6] << 4) | (data[7] & 0xF))
+                acc_y = ((data[2] << 4) | (data[3] & 0xF)) - (1 << 11) if data[2] & 0x8 else ((data[2] << 4) | (data[3] & 0xF))
+                acc_z = ((data[4] << 4) | (data[5] & 0xF)) - (1 << 11) if data[4] & 0x8 else ((data[4] << 4) | (data[5] & 0xF))
+                await self._on_raw_sensor_data(acc_x, acc_y,acc_z)
 
     async def _send_command(self, command):
         await self.bleak_client.write_gatt_char(_UART_RX_CHAR_UUID, command)
