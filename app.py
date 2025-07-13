@@ -21,7 +21,7 @@ async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
         )
 
 
-class DeviceManager:
+class RingManager:
     _address: str
 
     def __init__(self, address: str) -> None:
@@ -33,40 +33,44 @@ class DeviceManager:
 
 
 class UIApp:
-    _device_managers: dict[str, DeviceManager]
+    _ring_managers: dict[str, RingManager]
 
-    _devices: UIDevices
-    _monitor: UIMonitor
+    _rings: UIRings
+    _midi: UIMidi
+    _signals: UISignals
 
     def __init__(self) -> None:
         with ui.tabs() as tabs:
-            self._device_managers = {}
+            self._ring_managers = {}
 
-            tab_devices = ui.tab("Devices", icon="warning")
-            tab_monitor = ui.tab("Monitor")
+            tab_rings = ui.tab("Rings", icon="check")
+            tab_midi = ui.tab("MIDI output", icon="warning")
+            tab_signals = ui.tab("Signals", icon="")
 
-        with ui.tab_panels(tabs, value=tab_devices).classes("w-full"):
-            with ui.tab_panel(tab_devices):
-                self._devices = UIDevices(on_add_device=self._on_add_device)
-            with ui.tab_panel(tab_monitor):
-                self._monitor = UIMonitor()
+        with ui.tab_panels(tabs, value=tab_rings).classes("w-full"):
+            with ui.tab_panel(tab_rings):
+                self._rings = UIRings(on_add_ring=self._on_add_ring)
+            with ui.tab_panel(tab_midi):
+                self._midi = UIMidi()
+            with ui.tab_panel(tab_signals):
+                self._signals = UISignals()
 
-    def _on_add_device(self, address: str) -> str | None:
+    def _on_add_ring(self, address: str) -> str | None:
         """
-        Add a new device.
+        Add a new ring.
 
         None is successful. str is error message.
         """
         if address == "":
             return "Address cannot be empty."
-        elif address in self._device_managers.keys():
+        elif address in self._ring_managers.keys():
             return f"Address {address} already added."
         else:
-            self._device_managers[address] = DeviceManager(address=address)
+            self._ring_managers[address] = RingManager(address=address)
 
 
-class UIDevices:
-    _on_add_device: Callable[[str], bool]
+class UIRings:
+    _on_add_ring: Callable[[str], bool]
 
     _tabs = nicegui.elements.tabs.Tabs
     _panels = nicegui.elements.tabs.TabPanels
@@ -74,11 +78,11 @@ class UIDevices:
     _tab_new = nicegui.elements.tabs.Tab
     _ring_address = nicegui.elements.input.Input
 
-    def __init__(self, on_add_device: Callable[[str], str | None]) -> None:
+    def __init__(self, on_add_ring: Callable[[str], str | None]) -> None:
         """
-        on_add_device is None if successful, str is error message.
+        on_add_ring is None if successful, str is error message.
         """
-        self._on_add_device = on_add_device
+        self._on_add_ring = on_add_ring
 
         with ui.splitter(value=None).classes("w-full") as splitter:
             with splitter.before:
@@ -98,15 +102,15 @@ class UIDevices:
 
                         ui.separator()
 
-                        ui.button(text="Scan for devices", on_click=self._scan)
+                        ui.button(text="Scan for rings", on_click=self._scan)
                         with ui.list().props("dense separator") as scan_list:
                             self._scan_list = scan_list
 
     def _add(self) -> None:
-        result = self._on_add_device(self._ring_address.value)
+        result = self._on_add_ring(self._ring_address.value)
         if result is None:
             with self._tabs:
-                ui.tab(self._ring_address.value, icon="warning")
+                ui.tab(self._ring_address.value, icon="bluetooth_searching")  # warning
                 self._tab_new.move(target_index=-1)
             with self._panels:
                 with ui.tab_panel(self._ring_address.value):
@@ -125,7 +129,12 @@ class UIDevices:
         self.panels.remove(0)
 
 
-class UIMonitor:
+class UIMidi:
+    def __init__(self) -> None:
+        pass
+
+
+class UISignals:
     def __init__(self) -> None:
         pass
 
