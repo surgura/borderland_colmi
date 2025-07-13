@@ -1,0 +1,2 @@
+class MidiOutput:
+    pass

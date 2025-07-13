@@ -1,0 +1,6 @@
+bleak
+git+https://github.com/tahnok/colmi_r02_client
+nicegui
+numpy
+python-rtmidi
+matplotlib
