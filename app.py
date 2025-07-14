@@ -10,6 +10,7 @@ import asyncio
 from accelerometer_data import AccelerometerData
 from rtmidi import MidiOut
 from typing import Callable
+from enum import Enum, auto
 
 
 async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
@@ -21,15 +22,53 @@ async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
         )
 
 
+class RingStatus(Enum):
+    CONNECTED = auto()
+    DISCONNECTED = auto()
+    CONNECTING = auto()
+
+
 class RingManager:
     _address: str
+    _on_connect: Callable[[], None]
+    _on_disconnect: Callable[[], None]
+    _on_connecting: Callable[[], None]
 
-    def __init__(self, address: str) -> None:
+    _ring_status: RingStatus
+
+    def __init__(
+        self,
+        address: str,
+        on_connect: Callable[[], None],
+        on_disconnect: Callable[[], None],
+        on_connecting: Callable[[], None],
+    ) -> None:
         self._address = address
+        self._on_connect = on_connect
+        self._on_disconnect = on_disconnect
+        self._on_connecting = on_connecting
+
+        self._ring_status = RingStatus.DISCONNECTED
 
     @property
     def address(self) -> str:
         return self._address
+
+    async def run(self) -> None:
+        while True:
+            await asyncio.sleep(1)
+            self._ring_status = RingStatus.CONNECTING
+            self._on_connecting()
+            await asyncio.sleep(1)
+            self._ring_status = RingStatus.CONNECTED
+            self._on_connect()
+            await asyncio.sleep(1)
+            self._ring_status = RingStatus.DISCONNECTED
+            self._on_disconnect()
+
+    @property
+    def status(self) -> RingStatus:
+        return self._ring_status
 
 
 class UIApp:
@@ -39,16 +78,18 @@ class UIApp:
     _midi: UIMidi
     _signals: UISignals
 
+    _tab_rings: nicegui.elements.tabs.Tab
+
     def __init__(self) -> None:
         with ui.tabs() as tabs:
             self._ring_managers = {}
 
-            tab_rings = ui.tab("Rings", icon="check")
+            self._tab_rings = ui.tab("Rings", icon="question_mark")
             tab_midi = ui.tab("MIDI output", icon="warning")
             tab_signals = ui.tab("Signals", icon="")
 
-        with ui.tab_panels(tabs, value=tab_rings).classes("w-full"):
-            with ui.tab_panel(tab_rings):
+        with ui.tab_panels(tabs, value=self._tab_rings).classes("w-full"):
+            with ui.tab_panel(self._tab_rings):
                 self._rings = UIRings(on_add_ring=self._on_add_ring)
             with ui.tab_panel(tab_midi):
                 self._midi = UIMidi()
@@ -66,7 +107,37 @@ class UIApp:
         elif address in self._ring_managers.keys():
             return f"Address {address} already added."
         else:
-            self._ring_managers[address] = RingManager(address=address)
+            self._ring_managers[address] = RingManager(
+                address=address,
+                on_connect=lambda: self._on_ring_connect(address),
+                on_disconnect=lambda: self._on_ring_disconnect(address),
+                on_connecting=lambda: self._on_ring_connecting(address),
+            )
+            asyncio.create_task(self._ring_managers[address].run())
+
+    def _on_ring_connect(self, address: str) -> None:
+        self._update_rings_icon()
+        self._rings.on_ring_connect(address)
+
+    def _on_ring_disconnect(self, address: str) -> None:
+        self._update_rings_icon()
+        self._rings.on_ring_disconnect(address)
+
+    def _on_ring_connecting(self, address: str) -> None:
+        self._update_rings_icon()
+        self._rings.on_ring_connecting(address)
+
+    def _update_rings_icon(self) -> None:
+        if any(
+            [r.status == RingStatus.DISCONNECTED for r in self._ring_managers.values()]
+        ):
+            self._tab_rings.icon = "warning"
+        elif any(
+            [r.status == RingStatus.CONNECTING for r in self._ring_managers.values()]
+        ):
+            self._tab_rings.icon = "bluetooth_searching"
+        else:
+            self._tab_rings.icon = "check"
 
 
 class UIRings:
@@ -77,6 +148,9 @@ class UIRings:
     _scan_list = nicegui.elements.list.List
     _tab_new = nicegui.elements.tabs.Tab
     _ring_address = nicegui.elements.input.Input
+
+    _ring_tabs: dict[str, IORingTab] = {}
+    _ring_tabs_ui: dict[str, nicegui.elements.tabs.Tab] = {}
 
     def __init__(self, on_add_ring: Callable[[str], str | None]) -> None:
         """
@@ -107,26 +181,76 @@ class UIRings:
                             self._scan_list = scan_list
 
     def _add(self) -> None:
-        result = self._on_add_ring(self._ring_address.value)
+        address = self._ring_address.value
+        result = self._on_add_ring(address)
         if result is None:
             with self._tabs:
-                ui.tab(self._ring_address.value, icon="bluetooth_searching")  # warning
+                self._ring_tabs_ui[address] = ui.tab(
+                    self._ring_address.value, icon="question_mark"
+                )
                 self._tab_new.move(target_index=-1)
             with self._panels:
                 with ui.tab_panel(self._ring_address.value):
-                    ui.label(self._ring_address.value)
-
+                    self._ring_tabs[address] = IORingTab(
+                        address=address, on_remove=self._on_ring_tab_remove
+                    )
         else:
             ui.notify(message=result, type="warning")
+
+    def on_ring_connect(self, address: str) -> None:
+        self._ring_tabs_ui[address].icon = "check"
+        self._ring_tabs[address].on_connect()
+
+    def on_ring_disconnect(self, address: str) -> None:
+        self._ring_tabs_ui[address].icon = "warning"
+        self._ring_tabs[address].on_disconnect()
+
+    def on_ring_connecting(self, address: str) -> None:
+        self._ring_tabs_ui[address].icon = "bluetooth_searching"
+        self._ring_tabs[address].on_connecting()
 
     def _scan(self) -> None:
         with self._scan_list:
             self._scan_list.clear()
             ui.item("TODO")
 
+    def _on_ring_tab_remove(self, address: str) -> None:
+        ui.notify(message="TODO")
+
     def remove_tab(self):
         self.tabs.remove(0)
         self.panels.remove(0)
+
+
+class IORingTab:
+    _on_remove: Callable[[str], None]
+
+    _status: nicegui.elements.item.ItemLabel
+
+    def __init__(self, address: str, on_remove: Callable[[str], None]) -> None:
+        self._on_remove = on_remove
+
+        with ui.list().props("separator"):
+            with ui.item():
+                with ui.item_section():
+                    ui.label("Address:").classes("text-bold")
+                with ui.item_section():
+                    ui.item_label(f"{address}")
+            with ui.item():
+                with ui.item_section():
+                    ui.label("Status:").classes("text-bold")
+                with ui.item_section():
+                    self._status = ui.item_label("?")
+        ui.button(text="Remove", on_click=self._on_remove)
+
+    def on_connect(self) -> None:
+        self._status.text = "Connected"
+
+    def on_disconnect(self) -> None:
+        self._status.text = "Disconnected"
+
+    def on_connecting(self) -> None:
+        self._status.text = "Connecting"
 
 
 class UIMidi:
