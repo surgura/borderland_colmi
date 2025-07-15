@@ -77,8 +77,6 @@ class RingManager:
             except BleakError as e:
                 self._ring_status = RingStatus.DISCONNECTED
                 self._on_connect_fail(str(e))
-            except Exception:
-                print("exception while connecting/connected")
             self._bleak_client = None
             await asyncio.sleep(2)
 
