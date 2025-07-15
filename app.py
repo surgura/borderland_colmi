@@ -12,6 +12,8 @@ from rtmidi import MidiOut
 from typing import Callable
 from enum import Enum, auto
 from scan_for_rings import scan_for_rings
+import json
+from pathlib import Path
 
 
 async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
@@ -31,6 +33,7 @@ class RingStatus(Enum):
 
 class RingManager:
     _address: str
+    _name: str
     _on_connect: Callable[[], None]
     _on_disconnect: Callable[[], None]
     _on_connecting: Callable[[], None]
@@ -40,11 +43,13 @@ class RingManager:
     def __init__(
         self,
         address: str,
+        name: str,
         on_connect: Callable[[], None],
         on_disconnect: Callable[[], None],
         on_connecting: Callable[[], None],
     ) -> None:
         self._address = address
+        self._name = name
         self._on_connect = on_connect
         self._on_disconnect = on_disconnect
         self._on_connecting = on_connecting
@@ -54,6 +59,10 @@ class RingManager:
     @property
     def address(self) -> str:
         return self._address
+
+    @property
+    def name(self) -> str:
+        return self._name
 
     async def run(self) -> None:
         while True:
@@ -97,7 +106,15 @@ class UIApp:
             with ui.tab_panel(tab_signals):
                 self._signals = UISignals()
 
-    def _on_add_ring(self, address: str) -> str | None:
+    async def startup(self) -> None:
+        path = Path("rings.json")
+        if path.is_file():
+            with open(path, "r") as f:
+                rings = json.load(f)
+                for ring in rings:
+                    self._rings.add(address=ring["address"], name=ring["name"])
+
+    def _on_add_ring(self, address: str, name: str) -> str | None:
         """
         Add a new ring.
 
@@ -110,11 +127,18 @@ class UIApp:
         else:
             self._ring_managers[address] = RingManager(
                 address=address,
+                name=name,
                 on_connect=lambda: self._on_ring_connect(address),
                 on_disconnect=lambda: self._on_ring_disconnect(address),
                 on_connecting=lambda: self._on_ring_connecting(address),
             )
             asyncio.create_task(self._ring_managers[address].run())
+
+        rings = [
+            {"address": r.address, "name": r.name} for r in self._ring_managers.values()
+        ]
+        with open("rings.json", "w") as f:
+            json.dump(rings, f)
 
     def _on_ring_connect(self, address: str) -> None:
         self._update_rings_icon()
@@ -142,7 +166,7 @@ class UIApp:
 
 
 class UIRings:
-    _on_add_ring: Callable[[str], bool]
+    _on_add_ring: Callable[[str, str], bool]
 
     _tabs = nicegui.elements.tabs.Tabs
     _panels = nicegui.elements.tabs.TabPanels
@@ -155,7 +179,7 @@ class UIRings:
 
     _scanning: bool
 
-    def __init__(self, on_add_ring: Callable[[str], str | None]) -> None:
+    def __init__(self, on_add_ring: Callable[[str, str], str | None]) -> None:
         """
         on_add_ring is None if successful, str is error message.
         """
@@ -179,7 +203,7 @@ class UIRings:
                         self._ring_address = ui.input(label="Ring address")
                         ui.button(
                             text="Add",
-                            on_click=lambda: self._add(
+                            on_click=lambda: self.add(
                                 address=self._ring_address.value,
                                 name=self._ring_address.value,
                             ),
@@ -191,8 +215,8 @@ class UIRings:
                         with ui.list().props("dense separator") as scan_list:
                             self._scan_list = scan_list
 
-    def _add(self, address: str, name: str) -> None:
-        result = self._on_add_ring(address)
+    def add(self, address: str, name: str) -> None:
+        result = self._on_add_ring(address, name)
         if result is None:
             with self._tabs:
                 self._ring_tabs_ui[address] = ui.tab(name, icon="question_mark")
@@ -280,7 +304,7 @@ class UIRings:
                     </q-tr>
                 """,
                 )
-                table.on("add", lambda msg: self._add(msg.args[0], msg.args[1]))
+                table.on("add", lambda msg: self.add(msg.args[0], msg.args[1]))
             self._scanning = False
 
     def _on_ring_tab_remove(self, address: str) -> None:
@@ -381,14 +405,18 @@ def run_app(addresses: list[str]) -> None:
     ui_app = UIApp()
 
     @app.on_startup
-    async def startup():
-        pass
-        # await client.__aenter__()
-        # midiout.open_virtual_port("My midi thing")
-        # asyncio.create_task(filter_abs_task(filter_abs, line_plot2, midiout))
+    async def startup(self) -> None:
+        await ui_app.startup()
 
-    @app.on_shutdown
-    async def shutdown():
-        await client.__aexit__(None, None, None)
+    # @app.on_startup
+    # async def startup():
+    # pass
+    # await client.__aenter__()
+    # midiout.open_virtual_port("My midi thing")
+    # asyncio.create_task(filter_abs_task(filter_abs, line_plot2, midiout))
+
+    # @app.on_shutdown
+    # async def shutdown():
+    #     await client.__aexit__(None, None, None)
 
     ui.run()
