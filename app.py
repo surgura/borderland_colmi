@@ -330,7 +330,7 @@ class IORingTab:
                 with ui.item_section():
                     ui.label("Name:").classes("text-bold")
                 with ui.item_section():
-                    ui.item_label(f"{address}")
+                    ui.item_label(f"{name}")
             with ui.item():
                 with ui.item_section():
                     ui.label("Address:").classes("text-bold")
