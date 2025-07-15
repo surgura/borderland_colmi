@@ -78,7 +78,9 @@ class RingManager:
                 self._ring_status = RingStatus.DISCONNECTED
                 self._on_connect_fail(str(e))
             self._bleak_client = None
-            await asyncio.sleep(2)
+
+            if not self._stop_event.is_set():
+                await asyncio.sleep(2)
 
     async def close(self) -> None:
         if self._bleak_client is not None:

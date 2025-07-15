@@ -27,6 +27,7 @@ async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
 
 class UIApp:
     _ring_managers: dict[str, RingManager]
+    _ring_manager_tasks: dict[str, asyncio.Task]
 
     _rings: UIRings
     _midi: UIMidi
@@ -41,6 +42,7 @@ class UIApp:
             self._client = ui.context.client
 
             self._ring_managers = {}
+            self._ring_manager_tasks = {}
 
             self._tab_rings = ui.tab("Rings", icon="question_mark")
             tab_midi = ui.tab("MIDI output", icon="warning")
@@ -65,6 +67,10 @@ class UIApp:
     async def shutdown(self) -> None:
         for ring in self._ring_managers.values():
             await ring.close()
+        print("Waiting for ring manager tasks to finish..")
+        await asyncio.gather(*self._ring_manager_tasks.values())
+        print("Done.")
+
         print("TODO wait for ring manager background tasks to finish")
 
     def _on_add_ring(self, address: str, name: str) -> str | None:
@@ -86,7 +92,9 @@ class UIApp:
                 on_connecting=lambda: self._on_ring_connecting(address),
                 on_connect_fail=lambda msg: self._on_ring_connect_fail(address, msg),
             )
-            asyncio.create_task(self._ring_managers[address].run())
+            self._ring_manager_tasks[address] = asyncio.create_task(
+                self._ring_managers[address].run()
+            )
 
         rings = [
             {"address": r.address, "name": r.name} for r in self._ring_managers.values()
