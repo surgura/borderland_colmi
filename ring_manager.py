@@ -1,7 +1,9 @@
 from enum import Enum, auto
-from typing import Callable
+from typing import Callable, Awaitable
 import asyncio
 from bleak import BleakClient, BleakError
+from accelerometer_data import AccelerometerData
+from datetime import datetime
 
 
 class RingStatus(Enum):
@@ -17,6 +19,7 @@ class RingManager:
     _on_disconnect: Callable[[], None]
     _on_connecting: Callable[[], None]
     _on_connect_fail: Callable[[str], None]
+    _on_raw_sensor_data: Callable[[AccelerometerData], Awaitable[None]]
 
     _ring_status: RingStatus
 
@@ -32,6 +35,7 @@ class RingManager:
         on_disconnect: Callable[[], None],
         on_connecting: Callable[[], None],
         on_connect_fail: Callable[[str], None],
+        on_raw_sensor_data: Callable[[AccelerometerData], Awaitable[None]],
     ) -> None:
         self._address = address
         self._name = name
@@ -39,6 +43,7 @@ class RingManager:
         self._on_disconnect = on_disconnect
         self._on_connecting = on_connecting
         self._on_connect_fail = on_connect_fail
+        self._on_raw_sensor_data = on_raw_sensor_data
 
         self._stop_event = None
 
@@ -68,8 +73,13 @@ class RingManager:
                     disconnected_callback=lambda c: disconnect_event.set(),
                 )
                 await self._bleak_client.connect()
+                await self._bleak_client.start_notify(
+                    _UART_TX_CHAR_UUID, self._handle_tx
+                )
                 self._ring_status = RingStatus.CONNECTED
                 self._on_connect()
+
+                await self._enable_raw_sensor_data()
 
                 await disconnect_event.wait()
                 self._ring_status = RingStatus.DISCONNECTED
@@ -84,9 +94,61 @@ class RingManager:
 
     async def close(self) -> None:
         if self._bleak_client is not None:
+            await self._disable_raw_sensor_data()
             await self._bleak_client.disconnect()
         self._stop_event.set()
 
     @property
     def status(self) -> RingStatus:
         return self._ring_status
+
+    async def _enable_raw_sensor_data(self) -> None:
+        await self._send_command(_ENABLE_RAW_SENSOR_CMD)
+
+    async def _disable_raw_sensor_data(self) -> None:
+        await self._send_command(_DISABLE_RAW_SENSOR_CMD)
+
+    async def _send_command(self, command):
+        await self._bleak_client.write_gatt_char(_UART_RX_CHAR_UUID, command)
+
+    async def _handle_tx(self, sender: int, data: bytearray) -> None:
+        if data[0] == 0xA1:
+            if data[1] == 0x03:
+                # y = axis through charging point
+                # z = axis through ring
+
+                acc_x = (data[6] << 4) | (data[7] & 0xF)
+                if acc_x & (1 << 11):
+                    acc_x -= 1 << 12
+
+                acc_y = (data[2] << 4) | (data[3] & 0xF)
+                if acc_y & (1 << 11):
+                    acc_y -= 1 << 12
+
+                acc_z = (data[4] << 4) | (data[5] & 0xF)
+                if acc_z & (1 << 11):
+                    acc_z -= 1 << 12
+
+                await self._on_raw_sensor_data(
+                    AccelerometerData(
+                        x=acc_x, y=acc_y, z=acc_z, timestamp=datetime.now()
+                    )
+                )
+
+
+def _create_command(hex_string):
+    bytes_array = [int(hex_string[i : i + 2], 16) for i in range(0, len(hex_string), 2)]
+    while len(bytes_array) < 15:
+        bytes_array.append(0)
+    checksum = sum(bytes_array) & 0xFF
+    bytes_array.append(checksum)
+    return bytes(bytes_array)
+
+
+_REBOOT_CMD = _create_command("0801")
+_BLINK_TWICE_CMD = _create_command("10")
+_ENABLE_RAW_SENSOR_CMD = _create_command("a104")
+_DISABLE_RAW_SENSOR_CMD = _create_command("a102")
+
+_UART_TX_CHAR_UUID = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E"
+_UART_RX_CHAR_UUID = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E"

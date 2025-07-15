@@ -1,78 +1,37 @@
-import asyncio
-import argparse
-from client import Client
-from app import run_app
-from scan_for_rings import scan_for_rings
-
-
-def cmd_scan() -> None:
-    print("Scanning..")
-    ring_devices = scan_for_rings()
-    if len(ring_devices) == 0:
-        print("No rings found.")
-    else:
-        print("Found rings(s)")
-        print(f"{'Name':>20}  | Address")
-        print("-" * 44)
-        for ring in ring_devices:
-            print(f"{ring.name:>20}  |  {ring.address}")
-
-
-def cmd_run(addresses: list[str]) -> None:
-    # asyncio.run(cmd_run_impl(addresses))
-    run_app(addresses)
-
-
-async def cmd_run_impl(addresses: list[str]) -> None:
-    if len(addresses) == 0:
-        raise ValueError("Must have at least one address to connect to.")
-    print(f"Running with addresses:\n{'\n'.join(addresses)}")
-
-    client = Client(address=addresses[0])
-    async with client:
-        # await client.blink_twice()
-        # await client.reboot()
-        # await client.enable_raw_sensor_data()
-        await client.disable_raw_sensor_data()
-        while True:
-            # data = client.get_full_data()
-            # data = await client.get_heart_rate_log()
-            # print(data.heart_rates[0])
-            # return
-            # logger.info("Waiting")
-            print("waiting")
-            await asyncio.sleep(5)
-    raise NotImplementedError()
-
-
-def cmd_scan_and_run() -> None:
-    print("Scanning..")
-    ring_devices = find_devices()
-    if len(ring_devices) == 0:
-        print("No rings found. Exiting..")
-        return
-    cmd_run([ring.address for ring in ring_devices])
+from app import UIApp
+from nicegui import ui, app
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    # filter_abs = FilterAbs(
+    #     update_period=timedelta(milliseconds=100),
+    #     window_size=timedelta(milliseconds=1000),
+    # )
 
-    scan_parser = subparsers.add_parser("scan")
+    # midiout = MidiOut()
 
-    run_parser = subparsers.add_parser("run")
-    run_parser.add_argument("addresses", nargs="+", help="Addresses to run with")
+    # ui.button("Enable accelerometer", on_click=on_enable_accelerometer)
+    # ui.button("Disable accelerometer", on_click=on_disable_accelerometer)
 
-    scan_and_run_parser = subparsers.add_parser("scan_and_run")
+    # line_plot = ui.line_plot(
+    #     n=3, limit=100, figsize=(10, 4), update_every=20, layout="constrained"
+    # ).with_legend(["x", "y", "z"])
 
-    args = parser.parse_args()
+    # line_plot2 = ui.line_plot(
+    #     n=1, limit=100, figsize=(10, 4), update_every=1, layout="constrained"
+    # ).with_legend(["abs"])
 
-    if args.command == "scan":
-        cmd_scan()
-    elif args.command == "run":
-        cmd_run(args.addresses)
-    elif args.command == "scan_and_run":
-        cmd_scan_and_run()
+    ui_app = UIApp()
+
+    @app.on_startup
+    async def startup(self) -> None:
+        await ui_app.startup()
+
+    @app.on_shutdown
+    async def shutdown():
+        await ui_app.shutdown()
+
+    ui.run()
 
 
 if __name__ == "__main__" or __name__ == "__mp_main__":

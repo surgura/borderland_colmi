@@ -1,10 +1,8 @@
 from __future__ import annotations
 
-from nicegui import ui, app
+from nicegui import ui
 
 import nicegui
-from client import Client
-from datetime import datetime, timedelta
 from filter_abs import FilterAbs
 import asyncio
 from accelerometer_data import AccelerometerData
@@ -38,6 +36,8 @@ class UIApp:
     _client: nicegui.context.Context.client
 
     def __init__(self) -> None:
+        ui.dark_mode(None)
+
         with ui.tabs() as tabs:
             self._client = ui.context.client
 
@@ -91,6 +91,9 @@ class UIApp:
                 on_disconnect=lambda: self._on_ring_disconnect(address),
                 on_connecting=lambda: self._on_ring_connecting(address),
                 on_connect_fail=lambda msg: self._on_ring_connect_fail(address, msg),
+                on_raw_sensor_data=lambda data: self._on_ring_raw_sensor_data(
+                    address, data
+                ),
             )
             self._ring_manager_tasks[address] = asyncio.create_task(
                 self._ring_managers[address].run()
@@ -119,6 +122,11 @@ class UIApp:
         self._rings.on_ring_connect_fail(address)
         with self._client:
             ui.notify(message=f"{address}: {msg}", type="negative")
+
+    async def _on_ring_raw_sensor_data(
+        self, address: str, data: AccelerometerData
+    ) -> None:
+        print(3)
 
     def _update_rings_icon(self) -> None:
         if any(
@@ -336,62 +344,3 @@ class UIMidi:
 class UISignals:
     def __init__(self) -> None:
         pass
-
-
-def run_app(addresses: list[str]) -> None:
-    filter_abs = FilterAbs(
-        update_period=timedelta(milliseconds=100),
-        window_size=timedelta(milliseconds=1000),
-    )
-
-    midiout = MidiOut()
-
-    if len(addresses) == 0:
-        raise ValueError("Must have at least one address to connect to.")
-    print(f"Running with addresses:\n{'\n'.join(addresses)}")
-
-    async def on_enable_accelerometer():
-        await client.enable_raw_sensor_data()
-
-    async def on_disable_accelerometer():
-        await client.disable_raw_sensor_data()
-
-    async def on_raw_sensor_data(acc_x: int, acc_y: int, acc_z: int):
-        now = datetime.now()
-        accelerometer_data = AccelerometerData(x=acc_x, y=acc_y, z=acc_z, timestamp=now)
-        filter_abs.on_accelerometer_data(accelerometer_data)
-        # line_plot.push([now], [[acc_x], [acc_y], [acc_z]], y_limits=(-5000, 5000))
-
-    client = Client(address=addresses[0], on_raw_sensor_data=on_raw_sensor_data)
-
-    ui.dark_mode(None)
-
-    # ui.button("Enable accelerometer", on_click=on_enable_accelerometer)
-    # ui.button("Disable accelerometer", on_click=on_disable_accelerometer)
-
-    # line_plot = ui.line_plot(
-    #     n=3, limit=100, figsize=(10, 4), update_every=20, layout="constrained"
-    # ).with_legend(["x", "y", "z"])
-
-    # line_plot2 = ui.line_plot(
-    #     n=1, limit=100, figsize=(10, 4), update_every=1, layout="constrained"
-    # ).with_legend(["abs"])
-
-    ui_app = UIApp()
-
-    @app.on_startup
-    async def startup(self) -> None:
-        await ui_app.startup()
-
-    # @app.on_startup
-    # async def startup():
-    # pass
-    # await client.__aenter__()
-    # midiout.open_virtual_port("My midi thing")
-    # asyncio.create_task(filter_abs_task(filter_abs, line_plot2, midiout))
-
-    @app.on_shutdown
-    async def shutdown():
-        await ui_app.shutdown()
-
-    ui.run()
