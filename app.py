@@ -11,6 +11,7 @@ from accelerometer_data import AccelerometerData
 from rtmidi import MidiOut
 from typing import Callable
 from enum import Enum, auto
+from scan_for_rings import scan_for_rings
 
 
 async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
@@ -152,11 +153,15 @@ class UIRings:
     _ring_tabs: dict[str, IORingTab] = {}
     _ring_tabs_ui: dict[str, nicegui.elements.tabs.Tab] = {}
 
+    _scanning: bool
+
     def __init__(self, on_add_ring: Callable[[str], str | None]) -> None:
         """
         on_add_ring is None if successful, str is error message.
         """
         self._on_add_ring = on_add_ring
+
+        self._scanning = False
 
         with ui.splitter(value=None).classes("w-full") as splitter:
             with splitter.before:
@@ -172,7 +177,13 @@ class UIRings:
                     self._panels = panels
                     with ui.tab_panel(self._tab_new):
                         self._ring_address = ui.input(label="Ring address")
-                        ui.button(text="Add", on_click=self._add)
+                        ui.button(
+                            text="Add",
+                            on_click=lambda: self._add(
+                                address=self._ring_address.value,
+                                name=self._ring_address.value,
+                            ),
+                        )
 
                         ui.separator()
 
@@ -180,19 +191,16 @@ class UIRings:
                         with ui.list().props("dense separator") as scan_list:
                             self._scan_list = scan_list
 
-    def _add(self) -> None:
-        address = self._ring_address.value
+    def _add(self, address: str, name: str) -> None:
         result = self._on_add_ring(address)
         if result is None:
             with self._tabs:
-                self._ring_tabs_ui[address] = ui.tab(
-                    self._ring_address.value, icon="question_mark"
-                )
+                self._ring_tabs_ui[address] = ui.tab(name, icon="question_mark")
                 self._tab_new.move(target_index=-1)
             with self._panels:
-                with ui.tab_panel(self._ring_address.value):
+                with ui.tab_panel(name):
                     self._ring_tabs[address] = IORingTab(
-                        address=address, on_remove=self._on_ring_tab_remove
+                        address=address, name=name, on_remove=self._on_ring_tab_remove
                     )
         else:
             ui.notify(message=result, type="warning")
@@ -209,10 +217,71 @@ class UIRings:
         self._ring_tabs_ui[address].icon = "bluetooth_searching"
         self._ring_tabs[address].on_connecting()
 
-    def _scan(self) -> None:
-        with self._scan_list:
-            self._scan_list.clear()
-            ui.item("TODO")
+    async def _scan(self) -> None:
+        if not self._scanning:
+            self._scanning = True
+            with self._scan_list:
+                self._scan_list.clear()
+                ui.spinner("dots", size="lg", color="red")
+            ring_devices = await scan_for_rings()
+            with self._scan_list:
+                self._scan_list.clear()
+                table = ui.table(
+                    columns=[
+                        {
+                            "name": "Name",
+                            "label": "Name",
+                            "field": "Name",
+                            "required": True,
+                            "align": "left",
+                        },
+                        {
+                            "name": "Address",
+                            "label": "Address",
+                            "field": "Address",
+                            "required": True,
+                            "align": "left",
+                        },
+                    ],
+                    rows=[
+                        {
+                            "Name": f"{ring.name}",
+                            "Address": f"{ring.address}",
+                        }
+                        for ring in ring_devices
+                    ],
+                )
+
+                # I don't get this part yet but I copied it from the docs and it works.
+                # Adds the + to the table rows
+                table.add_slot(
+                    "header",
+                    r"""
+                    <q-tr :props="props">
+                        <q-th auto-width />
+                        <q-th v-for="col in props.cols" :key="col.name" :props="props">
+                            {{ col.label }}
+                        </q-th>
+                    </q-tr>
+                """,
+                )
+                table.add_slot(
+                    "body",
+                    r"""
+                    <q-tr :props="props">
+                        <q-td auto-width>
+                            <q-btn size="sm" color="accent" round dense
+                                @click="$parent.$emit('add', props.row.Address, props.row.Name)"
+                                icon=add />
+                        </q-td>
+                        <q-td v-for="col in props.cols" :key="col.name" :props="props">
+                            {{ col.value }}
+                        </q-td>
+                    </q-tr>
+                """,
+                )
+                table.on("add", lambda msg: self._add(msg.args[0], msg.args[1]))
+            self._scanning = False
 
     def _on_ring_tab_remove(self, address: str) -> None:
         ui.notify(message="TODO")
@@ -227,10 +296,17 @@ class IORingTab:
 
     _status: nicegui.elements.item.ItemLabel
 
-    def __init__(self, address: str, on_remove: Callable[[str], None]) -> None:
+    def __init__(
+        self, address: str, name: str, on_remove: Callable[[str], None]
+    ) -> None:
         self._on_remove = on_remove
 
         with ui.list().props("separator"):
+            with ui.item():
+                with ui.item_section():
+                    ui.label("Name:").classes("text-bold")
+                with ui.item_section():
+                    ui.item_label(f"{address}")
             with ui.item():
                 with ui.item_section():
                     ui.label("Address:").classes("text-bold")

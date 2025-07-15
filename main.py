@@ -1,21 +1,13 @@
-from bleak import BleakScanner, BLEDevice
 import asyncio
-from colmi_r02_client.cli import DEVICE_NAME_PREFIXES
 import argparse
 from client import Client
-import logging
 from app import run_app
+from scan_for_rings import scan_for_rings
 
-# logger = logging.getLogger(__name__)
-
-def find_devices() -> list[BLEDevice]:
-    all_devices = asyncio.run(BleakScanner.discover(timeout=10))
-    rings = [d for d in all_devices if d.name and any([d.name.startswith(p) for p in DEVICE_NAME_PREFIXES])]
-    return rings
 
 def cmd_scan() -> None:
     print("Scanning..")
-    ring_devices = find_devices()
+    ring_devices = scan_for_rings()
     if len(ring_devices) == 0:
         print("No rings found.")
     else:
@@ -25,9 +17,11 @@ def cmd_scan() -> None:
         for ring in ring_devices:
             print(f"{ring.name:>20}  |  {ring.address}")
 
+
 def cmd_run(addresses: list[str]) -> None:
-    # asyncio.run(cmd_run_impl(addresses))    
+    # asyncio.run(cmd_run_impl(addresses))
     run_app(addresses)
+
 
 async def cmd_run_impl(addresses: list[str]) -> None:
     if len(addresses) == 0:
@@ -50,13 +44,15 @@ async def cmd_run_impl(addresses: list[str]) -> None:
             await asyncio.sleep(5)
     raise NotImplementedError()
 
+
 def cmd_scan_and_run() -> None:
     print("Scanning..")
     ring_devices = find_devices()
-    if len(ring_devices) == 0:  
+    if len(ring_devices) == 0:
         print("No rings found. Exiting..")
         return
     cmd_run([ring.address for ring in ring_devices])
+
 
 def main() -> None:
     parser = argparse.ArgumentParser()
