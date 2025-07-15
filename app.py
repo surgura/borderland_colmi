@@ -10,10 +10,10 @@ import asyncio
 from accelerometer_data import AccelerometerData
 from rtmidi import MidiOut
 from typing import Callable
-from enum import Enum, auto
 from scan_for_rings import scan_for_rings
 import json
 from pathlib import Path
+from ring_manager import RingManager, RingStatus
 
 
 async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
@@ -25,62 +25,6 @@ async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
         )
 
 
-class RingStatus(Enum):
-    CONNECTED = auto()
-    DISCONNECTED = auto()
-    CONNECTING = auto()
-
-
-class RingManager:
-    _address: str
-    _name: str
-    _on_connect: Callable[[], None]
-    _on_disconnect: Callable[[], None]
-    _on_connecting: Callable[[], None]
-
-    _ring_status: RingStatus
-
-    def __init__(
-        self,
-        address: str,
-        name: str,
-        on_connect: Callable[[], None],
-        on_disconnect: Callable[[], None],
-        on_connecting: Callable[[], None],
-    ) -> None:
-        self._address = address
-        self._name = name
-        self._on_connect = on_connect
-        self._on_disconnect = on_disconnect
-        self._on_connecting = on_connecting
-
-        self._ring_status = RingStatus.DISCONNECTED
-
-    @property
-    def address(self) -> str:
-        return self._address
-
-    @property
-    def name(self) -> str:
-        return self._name
-
-    async def run(self) -> None:
-        while True:
-            await asyncio.sleep(1)
-            self._ring_status = RingStatus.CONNECTING
-            self._on_connecting()
-            await asyncio.sleep(1)
-            self._ring_status = RingStatus.CONNECTED
-            self._on_connect()
-            await asyncio.sleep(1)
-            self._ring_status = RingStatus.DISCONNECTED
-            self._on_disconnect()
-
-    @property
-    def status(self) -> RingStatus:
-        return self._ring_status
-
-
 class UIApp:
     _ring_managers: dict[str, RingManager]
 
@@ -90,8 +34,12 @@ class UIApp:
 
     _tab_rings: nicegui.elements.tabs.Tab
 
+    _client: nicegui.context.Context.client
+
     def __init__(self) -> None:
         with ui.tabs() as tabs:
+            self._client = ui.context.client
+
             self._ring_managers = {}
 
             self._tab_rings = ui.tab("Rings", icon="question_mark")
@@ -107,12 +55,18 @@ class UIApp:
                 self._signals = UISignals()
 
     async def startup(self) -> None:
+        return
         path = Path("rings.json")
         if path.is_file():
             with open(path, "r") as f:
                 rings = json.load(f)
                 for ring in rings:
                     self._rings.add(address=ring["address"], name=ring["name"])
+
+    async def shutdown(self) -> None:
+        for ring in self._ring_managers.values():
+            await ring.close()
+        print("TODO wait for ring manager background tasks to finish")
 
     def _on_add_ring(self, address: str, name: str) -> str | None:
         """
@@ -131,6 +85,7 @@ class UIApp:
                 on_connect=lambda: self._on_ring_connect(address),
                 on_disconnect=lambda: self._on_ring_disconnect(address),
                 on_connecting=lambda: self._on_ring_connecting(address),
+                on_connect_fail=lambda msg: self._on_ring_connect_fail(address, msg),
             )
             asyncio.create_task(self._ring_managers[address].run())
 
@@ -151,6 +106,12 @@ class UIApp:
     def _on_ring_connecting(self, address: str) -> None:
         self._update_rings_icon()
         self._rings.on_ring_connecting(address)
+
+    def _on_ring_connect_fail(self, address: str, msg: str) -> None:
+        self._update_rings_icon()
+        self._rings.on_ring_connect_fail(address)
+        with self._client:
+            ui.notify(message=f"{address}: {msg}", type="negative")
 
     def _update_rings_icon(self) -> None:
         if any(
@@ -240,6 +201,10 @@ class UIRings:
     def on_ring_connecting(self, address: str) -> None:
         self._ring_tabs_ui[address].icon = "bluetooth_searching"
         self._ring_tabs[address].on_connecting()
+
+    def on_ring_connect_fail(self, address: str) -> None:
+        self._ring_tabs_ui[address].icon = "warning"
+        self._ring_tabs[address].on_connect_fail()
 
     async def _scan(self) -> None:
         if not self._scanning:
@@ -352,6 +317,9 @@ class IORingTab:
     def on_connecting(self) -> None:
         self._status.text = "Connecting"
 
+    def on_connect_fail(self) -> None:
+        self._status.text = "Disconnected"
+
 
 class UIMidi:
     def __init__(self) -> None:
@@ -415,8 +383,8 @@ def run_app(addresses: list[str]) -> None:
     # midiout.open_virtual_port("My midi thing")
     # asyncio.create_task(filter_abs_task(filter_abs, line_plot2, midiout))
 
-    # @app.on_shutdown
-    # async def shutdown():
-    #     await client.__aexit__(None, None, None)
+    @app.on_shutdown
+    async def shutdown():
+        await ui_app.shutdown()
 
     ui.run()
