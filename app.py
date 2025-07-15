@@ -55,7 +55,6 @@ class UIApp:
                 self._signals = UISignals()
 
     async def startup(self) -> None:
-        return
         path = Path("rings.json")
         if path.is_file():
             with open(path, "r") as f:
