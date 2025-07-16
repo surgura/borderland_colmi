@@ -93,10 +93,10 @@ class RingManager:
                 await asyncio.sleep(2)
 
     async def close(self) -> None:
+        self._stop_event.set()
         if self._bleak_client is not None:
             await self._disable_raw_sensor_data()
             await self._bleak_client.disconnect()
-        self._stop_event.set()
 
     @property
     def status(self) -> RingStatus:

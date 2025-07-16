@@ -1,5 +1,5 @@
-from app import UIApp
-from nicegui import ui, app
+from app import App
+from nicegui import ui, app as nicegui_app
 
 
 def main() -> None:
@@ -21,15 +21,15 @@ def main() -> None:
     #     n=1, limit=100, figsize=(10, 4), update_every=1, layout="constrained"
     # ).with_legend(["abs"])
 
-    ui_app = UIApp()
+    app = App()
 
-    @app.on_startup
+    @nicegui_app.on_startup
     async def startup(self) -> None:
-        await ui_app.startup()
+        await app.startup()
 
-    @app.on_shutdown
+    @nicegui_app.on_shutdown
     async def shutdown():
-        await ui_app.shutdown()
+        await app.shutdown()
 
     ui.run()
 

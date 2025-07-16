@@ -12,6 +12,7 @@ from scan_for_rings import scan_for_rings
 import json
 from pathlib import Path
 from ring_manager import RingManager, RingStatus
+from filters import Filters
 
 
 async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
@@ -23,7 +24,7 @@ async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
         )
 
 
-class UIApp:
+class App:
     _ring_managers: dict[str, RingManager]
     _ring_manager_tasks: dict[str, asyncio.Task]
 
@@ -34,6 +35,9 @@ class UIApp:
     _tab_rings: nicegui.elements.tabs.Tab
 
     _client: nicegui.context.Context.client
+
+    _filters: Filters
+    _filters_task: asyncio.Task | None
 
     def __init__(self) -> None:
         ui.dark_mode(None)
@@ -56,7 +60,11 @@ class UIApp:
             with ui.tab_panel(tab_signals):
                 self._signals = UISignals()
 
+        self._filters = Filters()
+
     async def startup(self) -> None:
+        self._filters_task = asyncio.create_task(self._filters.run())
+
         path = Path("rings.json")
         if path.is_file():
             with open(path, "r") as f:
@@ -65,13 +73,14 @@ class UIApp:
                     self._rings.add(address=ring["address"], name=ring["name"])
 
     async def shutdown(self) -> None:
+        print("Shutting down ring communication..")
         for ring in self._ring_managers.values():
             await ring.close()
-        print("Waiting for ring manager tasks to finish..")
-        await asyncio.gather(*self._ring_manager_tasks.values())
+        print("Done")
+        self._filters.close()
+        print("Waiting background tasks to finish..")
+        await asyncio.gather(*self._ring_manager_tasks.values(), self._filters_task)
         print("Done.")
-
-        print("TODO wait for ring manager background tasks to finish")
 
     def _on_add_ring(self, address: str, name: str) -> str | None:
         """
@@ -98,6 +107,7 @@ class UIApp:
             self._ring_manager_tasks[address] = asyncio.create_task(
                 self._ring_managers[address].run()
             )
+            self._filters.on_ring_add(address=address)
 
         rings = [
             {"address": r.address, "name": r.name} for r in self._ring_managers.values()
@@ -126,7 +136,7 @@ class UIApp:
     async def _on_ring_raw_sensor_data(
         self, address: str, data: AccelerometerData
     ) -> None:
-        print(3)
+        self._filters.on_raw_sensor_data(address, data)
 
     def _update_rings_icon(self) -> None:
         if any(

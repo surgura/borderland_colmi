@@ -78,6 +78,6 @@ class FilterAbs:
             datetime.now(),
         )
 
-    def stop(self) -> None:
+    def close(self) -> None:
         if self._stop_event is not None and not self._stop_event.is_set():
             self._stop_event.set()
