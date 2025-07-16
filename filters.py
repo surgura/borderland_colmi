@@ -2,7 +2,7 @@ from filter_abs import FilterAbs, FilterAbsOutput
 from accelerometer_data import AccelerometerData
 import asyncio
 from datetime import timedelta
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable
 
 
 class Filters:
@@ -12,11 +12,16 @@ class Filters:
     _abs_filters: dict[str, FilterAbs]
     _abs_filter_gens: dict[str, AsyncGenerator[FilterAbsOutput, None]]
 
-    def __init__(self) -> None:
+    _on_abs_filter_output: Callable[[FilterAbsOutput], None]
+
+    def __init__(
+        self, on_abs_filter_output: Callable[[str, FilterAbsOutput], None]
+    ) -> None:
         self._stop_event = None
         self._filters_changed_event = None
         self._abs_filters = {}
         self._abs_filter_gens = {}
+        self._on_abs_filter_output = on_abs_filter_output
 
     async def run(self) -> None:
         self._stop_event = asyncio.Event()
@@ -73,4 +78,4 @@ class Filters:
         self._abs_filters[address].on_accelerometer_data(data)
 
     def _on_abs_filter_output(self, address: str, output: FilterAbsOutput) -> None:
-        print(output.value)
+        self._on_abs_filter_output(address, output)

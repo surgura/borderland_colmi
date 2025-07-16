@@ -3,25 +3,20 @@ from __future__ import annotations
 from nicegui import ui
 
 import nicegui
-from filter_abs import FilterAbs
 import asyncio
 from accelerometer_data import AccelerometerData
-from rtmidi import MidiOut
 from typing import Callable
 from scan_for_rings import scan_for_rings
 import json
 from pathlib import Path
 from ring_manager import RingManager, RingStatus
 from filters import Filters
+from midi_out import MidiOut
+from filter_abs import FilterAbsOutput
 
 
-async def filter_abs_task(filter_abs: FilterAbs, plot, midi: MidiOut) -> None:
-    async for abs_output in filter_abs.run():
-        plot.push([abs_output.timestamp], [[abs_output.value]], y_limits=(0, 3000))
-        print("send!")
-        midi.send_message(
-            [176, 1, round((min(2500, max(0, abs_output.value - 500))) / 2500 * 127)]
-        )
+class MidiConfig:
+    abs_ring_1 = "A4:10:EA:F3:05:D0"
 
 
 class App:
@@ -38,6 +33,10 @@ class App:
 
     _filters: Filters
     _filters_task: asyncio.Task | None
+
+    _midi_out: MidiOut
+
+    _midi_config: MidiConfig
 
     def __init__(self) -> None:
         ui.dark_mode(None)
@@ -60,7 +59,9 @@ class App:
             with ui.tab_panel(tab_signals):
                 self._signals = UISignals()
 
-        self._filters = Filters()
+        self._filters = Filters(on_abs_filter_output=self._on_abs_filter_output)
+        self._midi_out = MidiOut()
+        self._midi_config = MidiConfig()
 
     async def startup(self) -> None:
         self._filters_task = asyncio.create_task(self._filters.run())
@@ -149,6 +150,10 @@ class App:
             self._tab_rings.icon = "bluetooth_searching"
         else:
             self._tab_rings.icon = "check"
+
+    def _on_abs_filter_output(self, address: str, output: FilterAbsOutput) -> None:
+        if address == self._midi_config.abs_ring_1:
+            self._midi_out.send_abs_1(max(0.0, min(1.0, (output.value - 500) / 2500)))
 
 
 class UIRings:
