@@ -13,10 +13,9 @@ from ring_manager import RingManager, RingStatus
 from filters import Filters
 from midi_out import MidiOut
 from filter_abs import FilterAbsOutput
-
-
-class MidiConfig:
-    abs_ring_1 = "A4:10:EA:F3:05:D0"
+from ui_midi import UIMidi
+from dataclasses import asdict, fields
+from midi_config import MidiConfig
 
 
 class App:
@@ -28,6 +27,7 @@ class App:
     _signals: UISignals
 
     _tab_rings: nicegui.elements.tabs.Tab
+    _tab_midi: nicegui.elements.tabs.Tab
 
     _client: nicegui.context.Context.client
 
@@ -41,6 +41,8 @@ class App:
     def __init__(self) -> None:
         ui.dark_mode(None)
 
+        self._load_midi_config()
+
         with ui.tabs() as tabs:
             self._client = ui.context.client
 
@@ -48,22 +50,27 @@ class App:
             self._ring_manager_tasks = {}
 
             self._tab_rings = ui.tab("Rings", icon="question_mark")
-            tab_midi = ui.tab("MIDI output", icon="warning")
+            self._tab_midi = ui.tab("MIDI", icon="warning")
             tab_signals = ui.tab("Signals", icon="")
 
         with ui.tab_panels(tabs, value=self._tab_rings).classes("w-full"):
             with ui.tab_panel(self._tab_rings):
                 self._rings = UIRings(on_add_ring=self._on_add_ring)
-            with ui.tab_panel(tab_midi):
-                self._midi = UIMidi()
+            with ui.tab_panel(self._tab_midi):
+                self._midi = UIMidi(
+                    self._midi_config,
+                    self._on_midi_ring_1_address,
+                    self._on_midi_ring_2_address,
+                    self._on_midi_ring_3_address,
+                )
             with ui.tab_panel(tab_signals):
                 self._signals = UISignals()
 
         self._filters = Filters(on_abs_filter_output=self._on_abs_filter_output)
         self._midi_out = MidiOut()
-        self._midi_config = MidiConfig()
 
     async def startup(self) -> None:
+        self._update_midi_icon()
         self._filters_task = asyncio.create_task(self._filters.run())
 
         path = Path("rings.json")
@@ -109,6 +116,7 @@ class App:
                 self._ring_managers[address].run()
             )
             self._filters.on_ring_add(address=address)
+            self._midi.update_ring_addresses(addresses=list(self._ring_managers.keys()))
 
         rings = [
             {"address": r.address, "name": r.name} for r in self._ring_managers.values()
@@ -151,9 +159,58 @@ class App:
         else:
             self._tab_rings.icon = "check"
 
+    def _update_midi_icon(self) -> None:
+        if any(
+            getattr(self._midi_config, f.name) is None
+            for f in fields(self._midi_config)
+        ):
+            self._tab_midi.icon = "warning"
+        else:
+            self._tab_midi.icon = "check"
+
     def _on_abs_filter_output(self, address: str, output: FilterAbsOutput) -> None:
-        if address == self._midi_config.abs_ring_1:
+        if (
+            self._midi_config.abs_ring_1 is not None
+            and address == self._midi_config.abs_ring_1
+        ):
             self._midi_out.send_abs_1(max(0.0, min(1.0, (output.value - 500) / 2500)))
+        if (
+            self._midi_config.abs_ring_2 is not None
+            and address == self._midi_config.abs_ring_2
+        ):
+            self._midi_out.send_abs_1(max(0.0, min(1.0, (output.value - 500) / 2500)))
+        if (
+            self._midi_config.abs_ring_3 is not None
+            and address == self._midi_config.abs_ring_3
+        ):
+            self._midi_out.send_abs_1(max(0.0, min(1.0, (output.value - 500) / 2500)))
+
+    def _on_midi_ring_1_address(self, address: str) -> None:
+        self._midi_config.abs_ring_1 = address
+        self._save_midi_config()
+        self._update_midi_icon()
+
+    def _on_midi_ring_2_address(self, address: str) -> None:
+        self._midi_config.abs_ring_2 = address
+        self._save_midi_config()
+        self._update_midi_icon()
+
+    def _on_midi_ring_3_address(self, address: str) -> None:
+        self._midi_config.abs_ring_3 = address
+        self._save_midi_config()
+        self._update_midi_icon()
+
+    def _save_midi_config(self) -> None:
+        with open("midi.json", "w") as f:
+            json.dump(asdict(self._midi_config), f)
+
+    def _load_midi_config(self) -> None:
+        path = Path("midi.json")
+        if path.is_file():
+            with open(path, "r") as f:
+                self._midi_config = MidiConfig(**json.load(f))
+        else:
+            self._midi_config = MidiConfig()
 
 
 class UIRings:
@@ -349,11 +406,6 @@ class IORingTab:
 
     def on_connect_fail(self) -> None:
         self._status.text = "Disconnected"
-
-
-class UIMidi:
-    def __init__(self) -> None:
-        pass
 
 
 class UISignals:
