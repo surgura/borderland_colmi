@@ -70,6 +70,7 @@ class App:
         self._midi_out = MidiOut()
 
     async def startup(self) -> None:
+        self._midi_out.open()
         self._update_midi_icon()
         self._filters_task = asyncio.create_task(self._filters.run())
 
@@ -81,6 +82,7 @@ class App:
                     self._rings.add(address=ring["address"], name=ring["name"])
 
     async def shutdown(self) -> None:
+        self._midi_out.close()
         print("Shutting down ring communication..")
         for ring in self._ring_managers.values():
             await ring.close()
@@ -178,12 +180,12 @@ class App:
             self._midi_config.abs_ring_2 is not None
             and address == self._midi_config.abs_ring_2
         ):
-            self._midi_out.send_abs_1(max(0.0, min(1.0, (output.value - 500) / 2500)))
+            self._midi_out.send_abs_2(max(0.0, min(1.0, (output.value - 500) / 2500)))
         if (
             self._midi_config.abs_ring_3 is not None
             and address == self._midi_config.abs_ring_3
         ):
-            self._midi_out.send_abs_1(max(0.0, min(1.0, (output.value - 500) / 2500)))
+            self._midi_out.send_abs_3(max(0.0, min(1.0, (output.value - 500) / 2500)))
 
     def _on_midi_ring_1_address(self, address: str) -> None:
         self._midi_config.abs_ring_1 = address
