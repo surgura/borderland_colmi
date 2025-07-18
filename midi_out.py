@@ -33,3 +33,24 @@ class MidiOut:
         """
         assert value <= 1.0 and value >= 0.0
         self._midi_out.send_message([176, 3, round(value * 127)])
+
+    def send_leaky_integrator_1(self, value: float) -> None:
+        """
+        value must be between 0 and 1
+        """
+        assert value <= 1.0 and value >= 0.0
+        self._midi_out.send_message([176, 4, round(value * 127)])
+
+    def send_leaky_integrator_2(self, value: float) -> None:
+        """
+        value must be between 0 and 1
+        """
+        assert value <= 1.0 and value >= 0.0
+        self._midi_out.send_message([176, 5, round(value * 127)])
+
+    def send_leaky_integrator_3(self, value: float) -> None:
+        """
+        value must be between 0 and 1
+        """
+        assert value <= 1.0 and value >= 0.0
+        self._midi_out.send_message([176, 6, round(value * 127)])

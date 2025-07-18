@@ -4,6 +4,7 @@ import asyncio
 from datetime import timedelta
 from typing import AsyncGenerator, Callable
 import traceback
+from filter_leaky_integrator import FilterLeakyIntegrator, FilterLeakyIntegratorOutput
 
 
 class Filters:
@@ -14,10 +15,21 @@ class Filters:
     _abs_filter_gens: dict[str, AsyncGenerator[FilterAbsOutput, None]]
     _abs_filter_tasks: dict[str, asyncio.Task]
 
+    _leaky_integrator_filters: dict[str, FilterLeakyIntegrator]
+    _leaky_integarator_filter_gens: dict[
+        str, AsyncGenerator[FilterLeakyIntegratorOutput, None]
+    ]
+    _leaky_integrator_filter_tasks: dict[str, asyncio.Task]
+
     _on_abs_filter_output: Callable[[FilterAbsOutput], None]
+    _on_leaky_integrator_filter_output: Callable[[FilterLeakyIntegratorOutput], None]
 
     def __init__(
-        self, on_abs_filter_output: Callable[[str, FilterAbsOutput], None]
+        self,
+        on_abs_filter_output: Callable[[str, FilterAbsOutput], None],
+        on_leaky_integrator_filter_output: Callable[
+            [str, FilterLeakyIntegratorOutput], None
+        ],
     ) -> None:
         self._stop_event = None
         self._filters_changed_event = None
@@ -26,9 +38,13 @@ class Filters:
         self._on_abs_filter_output = on_abs_filter_output
         self._abs_filter_tasks = {}
 
+        self._leaky_integrator_filters = {}
+        self._leaky_integrator_filter_gens = {}
+        self._on_leaky_integrator_filter_output = on_leaky_integrator_filter_output
+        self._leaky_integrator_filter_tasks = {}
+
     async def run(self) -> None:
         try:
-            print()
             self._stop_event = asyncio.Event()
             self._filters_changed_event = asyncio.Event()
 
@@ -39,7 +55,8 @@ class Filters:
             while not self._stop_event.is_set():
                 done, pending = await asyncio.wait(
                     [stop_wait_task, filters_changed_wait_task]
-                    + [v for v in self._abs_filter_tasks.values()],
+                    + [v for v in self._abs_filter_tasks.values()]
+                    + [v for v in self._leaky_integrator_filter_tasks.values()],
                     return_when=asyncio.FIRST_COMPLETED,
                 )
                 if stop_wait_task in done:
@@ -53,6 +70,16 @@ class Filters:
                         )
                         self._abs_filter_tasks[address] = asyncio.create_task(
                             self._abs_filter_gens[address].__anext__()
+                        )
+                for address, task in self._leaky_integrator_filter_tasks.items():
+                    if task in done:
+                        self._on_leaky_integrator_filter_output(
+                            address=address, output=task.result()
+                        )
+                        self._leaky_integrator_filter_tasks[address] = (
+                            asyncio.create_task(
+                                self._leaky_integrator_filter_gens[address].__anext__()
+                            )
                         )
         except Exception:
             print("Filters crashed!!!")
@@ -74,6 +101,19 @@ class Filters:
         if self._filters_changed_event is not None:
             self._filters_changed_event.set()
 
+        assert address not in self._leaky_integrator_filters.keys()
+        self._leaky_integrator_filters[address] = FilterLeakyIntegrator(
+            update_period=timedelta(milliseconds=50), damping=0.7
+        )
+        self._leaky_integrator_filter_gens[address] = self._leaky_integrator_filters[
+            address
+        ].run()
+        self._leaky_integrator_filter_tasks[address] = asyncio.create_task(
+            self._leaky_integrator_filter_gens[address].__anext__()
+        )
+        if self._filters_changed_event is not None:
+            self._filters_changed_event.set()
+
     def on_ring_remove(self, address: str) -> None:
         self._abs_filters[address].close()
         del self._abs_filters[address]
@@ -82,5 +122,8 @@ class Filters:
         del self._abs_filter_tasks[address]
         self._filters_changed_event.set()
 
+        raise NotImplementedError()
+
     def on_raw_sensor_data(self, address: str, data: AccelerometerData) -> None:
         self._abs_filters[address].on_accelerometer_data(data)
+        self._leaky_integrator_filters[address].on_accelerometer_data(data)

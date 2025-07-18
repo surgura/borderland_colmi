@@ -16,6 +16,7 @@ from filter_abs import FilterAbsOutput
 from ui_midi import UIMidi
 from dataclasses import asdict, fields
 from midi_config import MidiConfig
+from filter_leaky_integrator import FilterLeakyIntegratorOutput
 
 
 class App:
@@ -66,7 +67,10 @@ class App:
             with ui.tab_panel(tab_signals):
                 self._signals = UISignals()
 
-        self._filters = Filters(on_abs_filter_output=self._on_abs_filter_output)
+        self._filters = Filters(
+            on_abs_filter_output=self._on_abs_filter_output,
+            on_leaky_integrator_filter_output=self._on_leaky_integrator_filter_output,
+        )
         self._midi_out = MidiOut()
 
     async def startup(self) -> None:
@@ -186,6 +190,25 @@ class App:
             and address == self._midi_config.abs_ring_3
         ):
             self._midi_out.send_abs_3(max(0.0, min(1.0, (output.value - 500) / 2500)))
+
+    def _on_leaky_integrator_filter_output(
+        self, address: str, output: FilterLeakyIntegratorOutput
+    ) -> None:
+        if (
+            self._midi_config.abs_ring_1 is not None
+            and address == self._midi_config.abs_ring_1
+        ):
+            self._midi_out.send_leaky_integrator_1(max(0.0, min(1.0, output.value / 1)))
+        if (
+            self._midi_config.abs_ring_2 is not None
+            and address == self._midi_config.abs_ring_2
+        ):
+            self._midi_out.send_leaky_integrator_2(max(0.0, min(1.0, output.value / 1)))
+        if (
+            self._midi_config.abs_ring_3 is not None
+            and address == self._midi_config.abs_ring_3
+        ):
+            self._midi_out.send_leaky_integrator_3(max(0.0, min(1.0, output.value / 1)))
 
     def _on_midi_ring_1_address(self, address: str) -> None:
         self._midi_config.abs_ring_1 = address

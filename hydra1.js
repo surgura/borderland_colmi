@@ -1,24 +1,56 @@
+// You can either use `@latest` or load a specific version with, for example, `@0.4.0`.
+await loadScript(
+    'https://cdn.jsdelivr.net/npm/hydra-midi@latest/dist/index.js'
+)
+
+// Use midi messages from all channels of all inputs.
+await midi.start({ channel: '*', input: 'borderland_pandelirium' })
+// Show a small midi monitor (similar to hydra's `a.show()`).
+midi.show()
+
+setFunction({
+    name: 'fisheye',
+    type: 'coord',
+    inputs: [{
+        type: 'float',
+        name: 'x',
+        default: 0,
+    },
+    {
+        type: 'float',
+        name: 'y',
+        default: 0,
+    },
+    {
+        type: 'float',
+        name: 'strength',
+        default: 1.0,
+    }
+    ],
+    glsl: `   vec2 center = vec2(x, y);
+    vec2 offset = _st - center;
+    float r = length(offset);
+
+    float k = 1.0 + strength /r / r;
+    return center + offset / k;`
+})
+
 solid(1, 1, 1)
-    .diff(shape(() => Math.round(10 * mouse.y / width + 4), 0.8, .09)
-        .repeat(20, 10))
+    .diff(shape(cc(5).range(3, 10), 0.8, .09)
+        .repeat(20, 20))
     .add(
         src(o0)
             .scale(0.95)
-            .rotate(() => (mouse.x - width / 2) / width / 10)
+            .rotate(cc(4).range(0, 0.2))
             .color(1, 0.5, 0.2)
             .brightness(.15), .7)
-    .pixel((uv, t) => {
-        let dx = uv.x - bubbleCenter[0]
-        let dy = uv.y - bubbleCenter[1]
-        let dist = Math.sqrt(dx * dx + dy * dy)
-        if (dist < bubbleRadius) {
-            let norm = dist / bubbleRadius
-            let factor = 1.0 - bubbleStrength * (1.0 - Math.sqrt(1.0 - norm * norm))
-            dx *= factor
-            dy *= factor
-            return [bubbleCenter[0] + dx, bubbleCenter[1] + dy]
-        } else {
-            return uv
-        }
-    })
-    .out()
+    .out(o0)
+
+src(o0)
+    .modulate(noise(0.5, 0.2))
+    .fisheye(() => mouse.x / width, () => mouse.y / height, 0.01)
+    .out(o1)
+
+console.log(cc(1))
+
+render(o1)
