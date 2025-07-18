@@ -1,2 +1,121 @@
-bluetooth off
-ring disconnects
+start event (pickup)
+abs
+3 axes
+floor position
+floor pressure
+
+
+persistence
+voronoi
+fade into next effect
+light and dark
+something changes based on the current time
+
+# change shape --------
+shape(() => Math.round(10*mouse.x / width+3)).out()
+# ----------------
+
+
+// licensed with CC BY-NC-SA 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
+// moire
+// by Olivia Jack
+// twitter: @_ojack_
+
+pattern = () => osc(200, 0).kaleid(200).scale(1, 0.4)
+//
+pattern()
+  .scrollX(0.1, 0.01)
+  .mult(pattern())
+  .out()
+
+
+
+
+// licensed with CC BY-NC-SA 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
+// ee_1 . EYE IN THE SKY
+//example of mask and function modulation
+// e_e // @eerie_ear
+noise(18)
+  .colorama(1)
+  .posterize(2)
+  .kaleid(50)
+  .mask(
+    shape(25, 0.25).modulateScale(
+      noise(400.5, 0.5)
+    )
+  )
+  .mask(shape(400, 1, 2.125))
+  .modulateScale(osc(6, 0.125, 0.05).kaleid(50))
+  .mult(osc(20, 0.05, 2.4).kaleid(50), 0.25)
+  .scale(1.75, 0.65, 0.5)
+  .modulate(noise(0.5))
+  .saturate(6)
+  .posterize(4, 0.2)
+  .scale(1.5)
+  .out();
+
+
+# triangle stuff
+a.setSmooth(.68)
+shape(3)
+	.color([-1.1, 1].smooth(), [.3,0].smooth().fast(.4), .5)
+	.scale(() => 0.3 + a.fft[0] * 3).out(o0)
+
+src(o0).modulate(src(o0).diff(src(o0).repeat([-1,3].smooth())))
+	.out(o1)
+
+src(o1).diff(src(o1).scale(.9)).out(o2)
+
+render(o2)
+
+
+
+# changing shape
+// licensed with CC BY-NC-SA 4.0 https://creativecommons.org/licenses/by-nc-sa/4.0/
+//random trypophobia - changes everytime you load it!
+//by Ritchse
+//instagram.com/ritchse
+ 
+function r(min=0,max=1) { return Math.random()*(max-min)+min; }
+ 
+solid(1,1,1)
+  	.diff(shape([4,4,4,24].smooth().fast(.5),r(0.6,0.93),.09).repeat(20,10))
+	.modulateScale(osc(8).rotate(r(-.5,.5)),.52)
+	.add(
+  		src(o0).scale(0.965).rotate(.012*(Math.round(r(-2,1))))
+  		.color(r(),r(),r())
+    	.modulateRotate(o0,r(0,0.5))
+  		.brightness(.15)
+  		,.7)
+	.out()
+
+
+
+solid(1,1,1)
+  	.diff(shape(() => Math.round(10*mouse.x / width+4),0.8,.09).repeat(20,10))
+	.modulateScale(osc(8).rotate(0.5),.52)
+	.add(
+  		src(o0).scale(0.965).rotate(0)
+  		.color(1,0.5,0.2)
+    	.modulateRotate(o0,0.2)
+  		.brightness(.15)
+  		,.7)
+	.out()
+
+    solid(1,1,1)
+        .diff(shape(() => Math.round(10*500 / width+4),0.8,.09).repeat(20,10))
+        .add(
+            src(o0).scale(0.95).rotate(() => (mouse.x - width / 2) / width / 10)
+            .color(1,0.5,0.2)
+            .brightness(.15)
+            ,.7)
+        .out()
+
+    solid(1,1,1)
+        .diff(shape(() => Math.round(10*500 / width+4),0.8,.09).repeat(20,10))
+        .add(
+            src(o0).scale(0.95).rotate(() => Math.sin(time) / 15)
+            .color(1,0.5,0.2)
+            .brightness(.15)
+            ,.7)
+        .out()
